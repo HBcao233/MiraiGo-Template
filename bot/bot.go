@@ -16,146 +16,74 @@ import (
 	qrcodeTerminal "github.com/Baozisoftware/qrcode-terminal-go"
 	"github.com/tuotoo/qrcode"
 
-	"github.com/Logiase/MiraiGo-Template/config"
-	"github.com/Logiase/MiraiGo-Template/utils"
+	"github.com/Logiase/MiraiGo-Template/global"
+	"github.com/Logiase/MiraiGo-Template/global/base"
+	"github.com/Logiase/MiraiGo-Template/global/cache"
+	"github.com/Logiase/MiraiGo-Template/global/coolq"
+	"github.com/Logiase/MiraiGo-Template/global/db"
 
 	"github.com/Mrs4s/MiraiGo/client"
-	"github.com/sirupsen/logrus"
+	"github.com/Mrs4s/MiraiGo/wrapper"
+	"github.com/mattn/go-colorable"
+
+	log "github.com/sirupsen/logrus"
 )
 
-// Bot 全局 Bot
-type Bot struct {
-	*client.QQClient
+var cli *client.QQClient
+var device *client.DeviceInfo
+var handlers []func(*coolq.CQBot, *coolq.Event)
 
-	started bool
-}
-
-// Instance Bot 实例
-var Instance *Bot
-
-var logger = logrus.WithField("bot", "internal")
-
-// Init 快速初始化
-// 使用 config.GlobalConfig 初始化账号
-// 使用 ./device.json 初始化设备信息
-func Init() {
-	b, _ := utils.FileExist("./device.json")
-	if !b {
-		GenRandomDevice()
-	}
-	deviceJSONContent := utils.ReadFile("./device.json")
-	InitWithDeviceJSONContent(deviceJSONContent)
-}
-
-type InitOption struct {
-	Account           int64
-	Password          string
-	DeviceJSONContent []byte //cannot be nil if using option init
-}
-
-func InitWithOption(option InitOption) error {
-	Instance = &Bot{
-		QQClient: client.NewClient(
-			option.Account,
-			option.Password,
-		),
-		started: false,
-	}
-
-	device := new(client.DeviceInfo)
-	err := device.ReadJson(option.DeviceJSONContent)
-	if err != nil {
-		return errors.Errorf("failed to apply device.json with err:%s", err)
-	}
-	Instance.UseDevice(device)
-	return nil
-}
-
-func InitWithDeviceJSONContent(deviceJSONContent []byte) {
-	var account = config.GlobalConfig.GetInt64("bot.account")
-	var password = config.GlobalConfig.GetString("bot.password")
-	err := InitWithOption(InitOption{
-		Account:           account,
-		Password:          password,
-		DeviceJSONContent: deviceJSONContent,
+func newClient() *client.QQClient {
+	c := client.NewClientEmpty()
+	// c.UseFragmentMessage = base.ForceFragmented
+	c.OnServerUpdated(func(_ *client.QQClient, _ *client.ServerUpdatedEvent) bool {
+		// if !base.UseSSOAddress {
+		// 	log.Infof("收到服务器地址更新通知, 根据配置文件已忽略.")
+		// 	return false
+		// }
+		log.Infof("收到服务器地址更新通知, 将在下一次重连时应用. ")
+		return true
 	})
-	if err != nil {
-		panic(err)
-	}
-}
-
-// InitBot 使用 account password 进行初始化账号
-func InitBot(account int64, password string) {
-	Instance = &Bot{
-		client.NewClient(account, password),
-		false,
-	}
-}
-
-// UseDevice 使用 device 进行初始化设备信息
-func UseDevice(device []byte) error {
-	deviceInfo := new(client.DeviceInfo)
-	err := deviceInfo.ReadJson(device)
-	if err != nil {
-		return err
-	}
-	Instance.UseDevice(deviceInfo)
-	return nil
-}
-
-// GenRandomDevice 生成随机设备信息
-func GenRandomDevice() {
-	device := client.GenRandomDevice()
-	b, _ := utils.FileExist("./device.json")
-	if b {
-		logger.Warn("device.json exists, will not write device to file")
-		return
-	}
-	err := os.WriteFile("device.json", device.ToJson(), os.FileMode(0644))
-	if err != nil {
-		logger.WithError(err).Errorf("unable to write device.json")
-	}
-}
-
-// SaveToken 会话缓存
-func SaveToken() {
-	AccountToken := Instance.GenToken()
-	_ = os.WriteFile("session.token", AccountToken, 0o644)
-}
-
-type LoginMethod string
-
-const (
-	LoginMethodToken  = "token"
-	LoginMethodQRCode = "qrcode"
-	LoginMethodCommon = "common"
-)
-
-// Login 登录
-func Login() error {
-	var tokenData []byte = nil
-	// 存在token缓存的情况快速恢复会话
-	if exist, _ := utils.FileExist("./session.token"); exist {
-		logger.Infof("检测到会话缓存, 尝试快速恢复登录")
-		token, err := os.ReadFile("./session.token")
-		if err != nil {
-			return fmt.Errorf("failed to read token from file with err: %w", err)
+	if global.PathExists("address.txt") {
+		log.Infof("检测到 address.txt 文件. 将覆盖目标IP.")
+		addr := global.ReadAddrFile("address.txt")
+		if len(addr) > 0 {
+			c.SetCustomServer(addr)
 		}
-		tokenData = token
+		log.Infof("读取到 %v 个自定义地址.", len(addr))
 	}
-	fmt.Println(Instance.Uin)
-	var loginMethodValue = config.GlobalConfig.GetString("bot.login-method")
-	return LoginWithOption(LoginOption{
-		LoginMethod:              LoginMethod(loginMethodValue),
-		Token:                    tokenData,
-		UseTokenWhenUnmatchedUin: true,
-	})
+	// c.SetLogger(protocolLogger{})
+	return c
 }
 
-type LoginOption struct {
-	LoginMethod              LoginMethod
-	Token                    []byte //if not nil, try with most priority
-	UseTokenWhenUnmatchedUin bool
+// Init 初始化
+func Init() {
+	base.Init()
+	log.SetOutput(colorable.NewColorableStdout())
+	log.SetFormatter(&global.LogFormat{EnableColor: true})
+	loadDevice()
+	loadSignServer()
+	loadVersions()
+
+	mkCacheDir := func(path string, _type string) {
+		if !global.PathExists(path) {
+			if err := os.MkdirAll(path, 0o755); err != nil {
+				log.Fatalf("创建%s缓存文件夹失败: %v", _type, err)
+			}
+		}
+	}
+	mkCacheDir(global.ImagePath, "图片")
+	mkCacheDir(global.VoicePath, "语音")
+	mkCacheDir(global.VideoPath, "视频")
+	mkCacheDir(global.CachePath, "发送图片")
+	mkCacheDir(path.Join(global.ImagePath, "guild-images"), "频道图片缓存")
+	mkCacheDir(global.VersionsPath, "版本缓存")
+	cache.Init()
+
+	db.Init()
+	if err := db.Open(); err != nil {
+		log.Fatalf("打开数据库失败: %v", err)
+	}
 }
 
 func LoginWithOption(option LoginOption) error {
@@ -360,73 +288,13 @@ func loginResponseProcessor(res *client.LoginResponse) error {
 			readLineTimeout(time.Second*5, "")
 			os.Exit(0)
 		}
+		log.Infof("从文件 %s 读取协议版本 %v.", versionFile, device.Protocol.Version())
 	}
 }
 
-// RefreshList 刷新联系人
-func RefreshList() {
-	logger.Info("start reload friends list")
-	err := Instance.ReloadFriendList()
-	if err != nil {
-		logger.WithError(err).Error("unable to load friends list")
-	}
-	logger.Infof("load %d friends", len(Instance.FriendList))
-	logger.Info("start reload groups list")
-	err = Instance.ReloadGroupList()
-	if err != nil {
-		logger.WithError(err).Error("unable to load groups list")
-	}
-	logger.Infof("load %d groups", len(Instance.GroupList))
+func GetBot() *client.QQClient {
+	return cli
 }
-
-// StartService 启动服务
-// 根据 Module 生命周期 此过程应在Login前调用
-// 请勿重复调用
-func StartService() {
-	if Instance.started {
-		return
-	}
-
-	Instance.started = true
-
-	logger.Infof("initializing modules ...")
-	for _, mi := range modules {
-		mi.Instance.Init()
-	}
-	for _, mi := range modules {
-		mi.Instance.PostInit()
-	}
-	logger.Info("all modules initialized")
-
-	logger.Info("registering modules serve functions ...")
-	for _, mi := range modules {
-		mi.Instance.Serve(Instance)
-	}
-	logger.Info("all modules serve functions registered")
-
-	logger.Info("starting modules tasks ...")
-	for _, mi := range modules {
-		go mi.Instance.Start(Instance)
-	}
-	logger.Info("tasks running")
-}
-
-// Stop 停止所有服务
-// 调用此函数并不会使Bot离线
-func Stop() {
-	logger.Warn("stopping ...")
-	wg := sync.WaitGroup{}
-	for _, mi := range modules {
-		wg.Add(1)
-		mi.Instance.Stop(Instance, &wg)
-	}
-	wg.Wait()
-	logger.Info("stopped")
-	modules = make(map[string]ModuleInfo)
-}
-
-func getTicket(u string) string {
-	logger.Warnf("请前往该地址验证 -> %v ", u)
-	logger.Warn("请输入ticket： (Enter 提交)")
-	return readLine()
+func AddHandler(f func(*coolq.CQBot, *coolq.Event)) {
+	handlers = append(handlers, f)
 }

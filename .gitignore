@@ -1,6 +1,10 @@
 .idea/
 
+build/
+logs/
+data/
+config.yml
 config.yaml
 device.json
-logs/
 qrcode.png
+session.token
