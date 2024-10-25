@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )

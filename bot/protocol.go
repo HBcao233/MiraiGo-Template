@@ -7,6 +7,7 @@ type protocol int
 const (
 	AndroidPhone = protocol(client.AndroidPhone)
 	IPad         = protocol(client.IPad)
+	AndroidPad   = protocol(client.AndroidPad)
 	AndroidWatch = protocol(client.AndroidWatch)
 	MacOS        = protocol(client.MacOS)
 )

@@ -18,6 +18,7 @@ import (
 
 	"github.com/Logiase/MiraiGo-Template/config"
 	"github.com/Logiase/MiraiGo-Template/utils"
+
 	"github.com/Mrs4s/MiraiGo/client"
 	"github.com/sirupsen/logrus"
 )
@@ -26,7 +27,7 @@ import (
 type Bot struct {
 	*client.QQClient
 
-	start bool
+	started bool
 }
 
 // Instance Bot 实例
@@ -38,6 +39,10 @@ var logger = logrus.WithField("bot", "internal")
 // 使用 config.GlobalConfig 初始化账号
 // 使用 ./device.json 初始化设备信息
 func Init() {
+	b, _ := utils.FileExist("./device.json")
+	if !b {
+		GenRandomDevice()
+	}
 	deviceJSONContent := utils.ReadFile("./device.json")
 	InitWithDeviceJSONContent(deviceJSONContent)
 }
@@ -54,7 +59,7 @@ func InitWithOption(option InitOption) error {
 			option.Account,
 			option.Password,
 		),
-		start: false,
+		started: false,
 	}
 
 	device := new(client.DeviceInfo)
@@ -201,7 +206,7 @@ func CommonLogin() error {
 
 // QrcodeLogin 扫码登陆
 func QrcodeLogin() error {
-	rsp, err := Instance.FetchQRCode()
+	rsp, err := Instance.FetchQRCodeCustomSize(3, 4, 2)
 	if err != nil {
 		return err
 	}
@@ -292,11 +297,15 @@ func loginResponseProcessor(res *client.LoginResponse) error {
 		var text string
 		switch res.Error {
 		case client.SliderNeededError:
-			logger.Warnf("登录需要滑条验证码, 请使用手机QQ扫描二维码以继续登录.")
-			Instance.Disconnect()
-			Instance.Release()
-			Instance.QQClient = client.NewClientEmpty()
-			return QrcodeLogin()
+			logger.Warnf("登录需要滑条验证码, 请验证:")
+			ticket := getTicket(res.VerifyUrl)
+			if ticket == "" {
+				logger.Infof("按 Enter 继续....")
+				readLine()
+				os.Exit(0)
+			}
+			res, err = Instance.SubmitTicket(ticket)
+			continue
 		case client.NeedCaptcha:
 			logger.Warnf("登录需要验证码.")
 			_ = os.WriteFile("captcha.jpg", res.CaptchaImage, 0o644)
@@ -374,11 +383,11 @@ func RefreshList() {
 // 根据 Module 生命周期 此过程应在Login前调用
 // 请勿重复调用
 func StartService() {
-	if Instance.start {
+	if Instance.started {
 		return
 	}
 
-	Instance.start = true
+	Instance.started = true
 
 	logger.Infof("initializing modules ...")
 	for _, mi := range modules {
@@ -414,4 +423,10 @@ func Stop() {
 	wg.Wait()
 	logger.Info("stopped")
 	modules = make(map[string]ModuleInfo)
+}
+
+func getTicket(u string) string {
+	logger.Warnf("请前往该地址验证 -> %v ", u)
+	logger.Warn("请输入ticket： (Enter 提交)")
+	return readLine()
 }
