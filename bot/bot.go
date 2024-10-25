@@ -1,20 +1,10 @@
 package bot
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	_ "image/png"
 	"os"
-	"strings"
-	"sync"
-	"time"
-
-	"github.com/Mrs4s/MiraiGo/binary"
-	"github.com/pkg/errors"
-
-	qrcodeTerminal "github.com/Baozisoftware/qrcode-terminal-go"
-	"github.com/tuotoo/qrcode"
+	"path"
 
 	"github.com/Logiase/MiraiGo-Template/global"
 	"github.com/Logiase/MiraiGo-Template/global/base"
@@ -86,206 +76,58 @@ func Init() {
 	}
 }
 
-func LoginWithOption(option LoginOption) error {
-	if option.Token != nil {
-		err := func() error {
-			logger.Infof("检测到会话缓存, 尝试快速恢复登录")
-			var token = option.Token
-			r := binary.NewReader(token)
-			cu := r.ReadInt64()
-			if Instance.Uin != 0 {
-				if cu != Instance.Uin && !option.UseTokenWhenUnmatchedUin {
-					return fmt.Errorf("配置文件内的QQ号 (%v) 与会话缓存内的QQ号 (%v) 不相同", Instance.Uin, cu)
-				}
-			}
-			if err := Instance.TokenLogin(token); err != nil {
-				time.Sleep(time.Second)
-				Instance.Disconnect()
-				return errors.Errorf("恢复会话失败(%s)", err)
-			} else {
-				logger.Infof("快速恢复登录成功")
-				return nil
-			}
-		}()
-		if err != nil {
-			logger.WithError(err).Warn("failed restore session by token, fallback to common or qrcode")
-		} else {
-			return nil
-		}
-	}
-	switch option.LoginMethod {
-	case LoginMethodCommon:
-		return CommonLogin()
-	case LoginMethodQRCode:
-		return QrcodeLogin()
-	default:
-		return errors.New("unknown login method")
-	}
-}
-
-// CommonLogin 普通账号密码登录
-func CommonLogin() error {
-	res, err := Instance.Login()
-	if err != nil {
-		return err
-	}
-	return loginResponseProcessor(res)
-}
-
-// QrcodeLogin 扫码登陆
-func QrcodeLogin() error {
-	rsp, err := Instance.FetchQRCodeCustomSize(3, 4, 2)
-	if err != nil {
-		return err
-	}
-	fi, err := qrcode.Decode(bytes.NewReader(rsp.ImageData))
-	if err != nil {
-		return err
-	}
-	_ = os.WriteFile("qrcode.png", rsp.ImageData, 0o644)
-	defer func() { _ = os.Remove("qrcode.png") }()
-	if Instance.Uin != 0 {
-		logger.Infof("请使用账号 %v 登录手机QQ扫描二维码 (qrcode.png) : ", Instance.Uin)
+func loadDevice() {
+	if !global.PathExists("device.json") {
+		log.Warn("虚拟设备信息不存在, 将自动生成随机设备.")
+		device = client.GenRandomDevice()
+		_ = os.WriteFile("device.json", device.ToJson(), 0o644)
+		log.Info("已生成设备信息并保存到 device.json 文件.")
 	} else {
-		logger.Infof("请使用手机QQ扫描二维码 (qrcode.png) : ")
+		log.Info("将使用 device.json 内的设备信息运行Bot.")
+		device = new(client.DeviceInfo)
+		if err := device.ReadJson([]byte(global.ReadAllText("device.json"))); err != nil {
+			log.Fatalf("加载设备信息失败: %v", err)
+		}
 	}
-	time.Sleep(time.Second)
-	qrcodeTerminal.New().Get(fi.Content).Print()
-	s, err := Instance.QueryQRCodeStatus(rsp.Sig)
+}
+
+func loadSignServer() {
+	signServer, err := getAvaliableSignServer() // 获取可用签名服务器
 	if err != nil {
-		return err
+		log.Warn(err)
 	}
-	prevState := s.State
-	for {
-		time.Sleep(time.Second)
-		s, _ = Instance.QueryQRCodeStatus(rsp.Sig)
-		if s == nil {
-			continue
-		}
-		if prevState == s.State {
-			continue
-		}
-		prevState = s.State
-		switch s.State {
-		case client.QRCodeCanceled:
-			logger.Fatalf("扫码被用户取消.")
-		case client.QRCodeTimeout:
-			logger.Fatalf("二维码过期")
-		case client.QRCodeWaitingForConfirm:
-			logger.Infof("扫码成功, 请在手机端确认登录.")
-		case client.QRCodeConfirmed:
-			res, err := Instance.QRCodeLogin(s.LoginInfo)
-			if err != nil {
-				return err
-			}
-			return loginResponseProcessor(res)
-		case client.QRCodeImageFetch, client.QRCodeWaitingForScan:
-			// ignore
-		}
+	if signServer != nil && len(signServer.URL) > 1 {
+		log.Infof("使用签名服务器：%v", signServer.URL)
+		// go signStartRefreshToken(conf.Account.RefreshInterval) // 定时刷新 token
+		wrapper.DandelionEnergy = energy
+		wrapper.FekitGetSign = sign
+		// if !conf.IsBelow110 {
+		// 	if !conf.Account.AutoRegister {
+		// 		log.Warn("自动注册实例已关闭，请配置 sign-server 端自动注册实例以保持正常签名")
+		// 	}
+		// 	if !conf.Account.AutoRefreshToken {
+		// 		log.Info("自动刷新 token 已关闭，token 过期后获取签名时将不会立即尝试刷新获取新 token")
+		// 	}
+		// } else {
+		// 	log.Warn("签名服务器版本 <= 1.1.0 ，无法使用刷新 token 等操作，建议使用 1.1.6 版本及以上签名服务器")
+		// }
+	} else {
+		log.Warnf("警告: 未配置签名服务器或签名服务器不可用, 这可能会导致登录 45 错误码或发送消息被风控")
 	}
 }
 
-// ErrSMSRequestError SMS请求出错
-var ErrSMSRequestError = errors.New("sms request error")
-
-var console = bufio.NewReader(os.Stdin)
-
-func readLine() (str string) {
-	str, _ = console.ReadString('\n')
-	str = strings.TrimSpace(str)
-	return
-}
-
-func readLineTimeout(t time.Duration, de string) (str string) {
-	r := make(chan string)
-	go func() {
-		select {
-		case r <- readLine():
-		case <-time.After(t):
-		}
-	}()
-	str = de
-	select {
-	case str = <-r:
-	case <-time.After(t):
-	}
-	return
-}
-
-// loginResponseProcessor 登录结果处理
-func loginResponseProcessor(res *client.LoginResponse) error {
-	var err error
-	for {
+func loadVersions() {
+	// 加载本地版本信息, 一般是在上次登录时保存的
+	versionFile := path.Join(global.VersionsPath, fmt.Sprint(int(device.Protocol))+".json")
+	if global.PathExists(versionFile) {
+		b, err := os.ReadFile(versionFile)
 		if err != nil {
-			return err
-		}
-		if res.Success {
-			return nil
-		}
-		var text string
-		switch res.Error {
-		case client.SliderNeededError:
-			logger.Warnf("登录需要滑条验证码, 请验证:")
-			ticket := getTicket(res.VerifyUrl)
-			if ticket == "" {
-				logger.Infof("按 Enter 继续....")
-				readLine()
-				os.Exit(0)
-			}
-			res, err = Instance.SubmitTicket(ticket)
-			continue
-		case client.NeedCaptcha:
-			logger.Warnf("登录需要验证码.")
-			_ = os.WriteFile("captcha.jpg", res.CaptchaImage, 0o644)
-			logger.Warnf("请输入验证码 (captcha.jpg)： (Enter 提交)")
-			text = readLine()
-			_ = os.Remove("captcha.jpg")
-			res, err = Instance.SubmitCaptcha(text, res.CaptchaSign)
-			continue
-		case client.SMSNeededError:
-			logger.Warnf("账号已开启设备锁, 按 Enter 向手机 %v 发送短信验证码.", res.SMSPhone)
-			readLine()
-			if !Instance.RequestSMS() {
-				logger.Warnf("发送验证码失败，可能是请求过于频繁.")
-				return errors.WithStack(ErrSMSRequestError)
-			}
-			logger.Warn("请输入短信验证码： (Enter 提交)")
-			text = readLine()
-			res, err = Instance.SubmitSMS(text)
-			continue
-		case client.SMSOrVerifyNeededError:
-			logger.Warnf("账号已开启设备锁，请选择验证方式:")
-			logger.Warnf("1. 向手机 %v 发送短信验证码", res.SMSPhone)
-			logger.Warnf("2. 使用手机QQ扫码验证.")
-			logger.Warn("请输入(1 - 2) (将在10秒后自动选择2)：")
-			text = readLineTimeout(time.Second*10, "2")
-			if strings.Contains(text, "1") {
-				if !Instance.RequestSMS() {
-					logger.Warnf("发送验证码失败，可能是请求过于频繁.")
-					return errors.WithStack(ErrSMSRequestError)
-				}
-				logger.Warn("请输入短信验证码： (Enter 提交)")
-				text = readLine()
-				res, err = Instance.SubmitSMS(text)
-				continue
-			}
-			fallthrough
-		case client.UnsafeDeviceError:
-			logger.Warnf("账号已开启设备锁，请前往 -> %v <- 验证后重启Bot.", res.VerifyUrl)
-			logger.Infof("按 Enter 或等待 5s 后继续....")
-			readLineTimeout(time.Second*5, "")
+			log.Warnf("从文件 %s 读取本地版本信息文件出错.", versionFile)
 			os.Exit(0)
-		case client.OtherLoginError, client.UnknownLoginError, client.TooManySMSRequestError:
-			msg := res.ErrorMessage
-			if strings.Contains(msg, "版本") {
-				msg = "密码错误或账号被冻结"
-			}
-			if strings.Contains(msg, "冻结") {
-				logger.Fatalf("账号被冻结")
-			}
-			logger.Warnf("登录失败: %v", msg)
-			logger.Infof("按 Enter 或等待 5s 后继续....")
-			readLineTimeout(time.Second*5, "")
+		}
+		err = device.Protocol.Version().UpdateFromJson(b)
+		if err != nil {
+			log.Warnf("从文件 %s 解析本地版本信息出错: %v", versionFile, err)
 			os.Exit(0)
 		}
 		log.Infof("从文件 %s 读取协议版本 %v.", versionFile, device.Protocol.Version())
