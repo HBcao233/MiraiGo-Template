@@ -2,9 +2,6 @@
 
 A template for MiraiGo
 
-> v2 版本正在重写，请提出 *你的想法* 或 *你对当前设计的不满* 
-> 本菜鸡会尽量改 
-
 [![Go Report Card](https://goreportcard.com/badge/github.com/Logiase/MiraiGo-Template)](https://goreportcard.com/report/github.com/Logiase/MiraiGo-Template)
 
 基于 [MiraiGo](https://github.com/Mrs4s/MiraiGo) 的多模块组合设计
@@ -19,9 +16,10 @@ golang 极速入门
 
 ## 基础配置
 
-账号配置[application.yaml](./application.yaml)
+账号配置[config.yaml](./config.yaml)
 ```yaml
 bot:
+  login-method: "common" # qrcode/common
   # 账号
   account: 1234567
   # 密码

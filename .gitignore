@@ -1,6 +1,6 @@
 .idea/
 
-application.yaml
+config.yaml
 device.json
 logs/
 qrcode.png
