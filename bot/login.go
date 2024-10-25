@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/Logiase/MiraiGo-Template/global"
-	"github.com/Logiase/MiraiGo-Template/internal/base"
+	"github.com/Logiase/MiraiGo-Template/global/base"
+	"github.com/Logiase/MiraiGo-Template/global/coolq"
+
 	"github.com/Mrs4s/MiraiGo/binary"
 	"github.com/Mrs4s/MiraiGo/client"
 	"github.com/pkg/errors"
@@ -104,6 +106,11 @@ func Login() {
 	log.Infof("开始加载群列表...")
 	global.Check(cli.ReloadGroupList(), true)
 	log.Infof("共加载 %v 个群.", len(cli.GroupList))
+	bot := coolq.NewQQBot(cli)
+	for _, f := range handlers {
+		bot.OnEventPush(f)
+	}
+
 	log.Info("资源初始化完成, 开始处理信息.")
 	log.Info("アトリは、高性能ですから!")
 }

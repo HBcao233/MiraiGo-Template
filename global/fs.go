@@ -2,12 +2,20 @@ package global
 
 import (
 	"bytes"
+	"crypto/md5"
+	"encoding/hex"
 	"errors"
 	"net/netip"
+	"net/url"
 	"os"
+	"path"
+	"runtime"
 	"strings"
 
+	"github.com/Logiase/MiraiGo-Template/global/download"
 	"github.com/Mrs4s/MiraiGo/utils"
+	b14 "github.com/fumiama/go-base16384"
+	"github.com/segmentio/asm/base64"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -106,4 +114,53 @@ func ReadAddrFile(path string) []netip.AddrPort {
 		}
 	}
 	return ret
+}
+
+// FindFile 从给定的File寻找文件，并返回文件byte数组。File是一个合法的URL。p为文件寻找位置。
+// 对于HTTP/HTTPS形式的URL，Cache为"1"或空时表示启用缓存
+func FindFile(file, cache, p string) (data []byte, err error) {
+	data, err = nil, os.ErrNotExist
+	switch {
+	case strings.HasPrefix(file, "http"): // https also has prefix http
+		hash := md5.Sum([]byte(file))
+		cacheFile := path.Join(CachePath, hex.EncodeToString(hash[:])+".cache")
+		if (cache == "" || cache == "1") && PathExists(cacheFile) {
+			return os.ReadFile(cacheFile)
+		}
+		err = download.Request{URL: file}.WriteToFile(cacheFile)
+		if err != nil {
+			return nil, err
+		}
+		return os.ReadFile(cacheFile)
+	case strings.HasPrefix(file, "base64"):
+		data, err = base64.StdEncoding.DecodeString(strings.TrimPrefix(file, "base64://"))
+		if err != nil {
+			return nil, err
+		}
+	case strings.HasPrefix(file, "base16384"):
+		data, err = b14.UTF82UTF16BE(utils.S2B(strings.TrimPrefix(file, "base16384://")))
+		if err != nil {
+			return nil, err
+		}
+		data = b14.Decode(data)
+	case strings.HasPrefix(file, "file"):
+		var fu *url.URL
+		fu, err = url.Parse(file)
+		if err != nil {
+			return nil, err
+		}
+		if strings.HasPrefix(fu.Path, "/") && runtime.GOOS == `windows` {
+			fu.Path = fu.Path[1:]
+		}
+		data, err = os.ReadFile(fu.Path)
+		if err != nil {
+			return nil, err
+		}
+	case PathExists(path.Join(p, file)):
+		data, err = os.ReadFile(path.Join(p, file))
+		if err != nil {
+			return nil, err
+		}
+	}
+	return
 }

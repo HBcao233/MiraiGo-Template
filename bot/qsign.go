@@ -16,9 +16,9 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
 
+	"github.com/Logiase/MiraiGo-Template/global/base"
 	"github.com/Logiase/MiraiGo-Template/global/config"
 	"github.com/Logiase/MiraiGo-Template/global/download"
-	"github.com/Logiase/MiraiGo-Template/internal/base"
 
 	"github.com/Mrs4s/MiraiGo/utils"
 )
