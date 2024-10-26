@@ -22,6 +22,8 @@ import (
 var cli *client.QQClient
 var device *client.DeviceInfo
 var handlers []func(*coolq.CQBot, *coolq.Event)
+var hooks_started []func()
+var hooks_connected []func(*coolq.CQBot)
 
 func newClient() *client.QQClient {
 	c := client.NewClientEmpty()
@@ -73,6 +75,9 @@ func Init() {
 	db.Init()
 	if err := db.Open(); err != nil {
 		log.Fatalf("打开数据库失败: %v", err)
+	}
+	for _, f := range hooks_started {
+		go f()
 	}
 }
 
@@ -139,4 +144,12 @@ func GetBot() *client.QQClient {
 }
 func AddHandler(f func(*coolq.CQBot, *coolq.Event)) {
 	handlers = append(handlers, f)
+}
+
+func OnStart(f func()) {
+	hooks_started = append(hooks_started, f)
+}
+
+func OnConnect(f func(*coolq.CQBot)) {
+	hooks_connected = append(hooks_connected, f)
 }

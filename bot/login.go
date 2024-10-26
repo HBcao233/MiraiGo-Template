@@ -107,6 +107,9 @@ func Login() {
 	global.Check(cli.ReloadGroupList(), true)
 	log.Infof("共加载 %v 个群.", len(cli.GroupList))
 	bot := coolq.NewQQBot(cli)
+	for _, f := range hooks_connected {
+		go f(bot)
+	}
 	for _, f := range handlers {
 		bot.OnEventPush(f)
 	}
