@@ -1,14 +1,8 @@
 # MiraiGo-Template
 
-A template for MiraiGo
-
-Fork from https://github.com/Logiase/MiraiGo-Template (对原仓库做了较大改动, 暂不merge)
-
 [![Go Report Card](https://goreportcard.com/badge/github.com/Logiase/MiraiGo-Template)](https://goreportcard.com/report/github.com/Logiase/MiraiGo-Template)
 
-基于 [MiraiGo](https://github.com/Mrs4s/MiraiGo) 的多模块组合设计
-
-包装了基础功能,同时设计了一个~~良好~~的项目结构
+分叉自 [Logiase/MiraiGo-Template](https://github.com/Logiase/MiraiGo-Template), 使用 [Mrs4s/go-cqhttp](https://github.com/Mrs4s/go-cqhttp) 的代码逻辑重写
 
 ## 不了解go?
 
