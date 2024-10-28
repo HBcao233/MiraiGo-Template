@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -72,9 +71,9 @@ func getAvaliableSignServer() (*config.SignServer, error) {
 	} else if errn.hasOver(uintptr(maxCount)) {
 		log.Fatalf("获取可用签名服务器失败次数超过 %v 次, 正在离线", maxCount)
 	}
-	if cs != nil && len(cs.URL) > 0 {
-		log.Warnf("当前签名服务器 %v 不可用，正在查找可用服务器", cs.URL)
-	}
+	// if len(cs.URL) > 0 {
+	// 	log.Warnf("当前签名服务器 %v 不可用，正在查找可用服务器", cs.URL)
+	// }
 	cs = asyncCheckServer(base.SignServers)
 	if cs == nil {
 		return nil, errors.New("no usable sign server")
@@ -194,7 +193,7 @@ func signSubmit(uin string, cmd string, callbackID int64, buffer []byte) {
 
 // signCallback
 // 刷新 token 和签名的回调
-func signCallback(uin string, results []gjson.Result, t string) {
+func signCallback(uin string, results []gjson.Result) {
 	for { // 等待至在线
 		if cli.Online.Load() {
 			break
@@ -229,7 +228,7 @@ func signRequset(seq uint64, uin string, cmd string, qua string, buff []byte) (s
 	sign, _ = hex.DecodeString(gjson.GetBytes(response, "data.sign").String())
 	extra, _ = hex.DecodeString(gjson.GetBytes(response, "data.extra").String())
 	token, _ = hex.DecodeString(gjson.GetBytes(response, "data.token").String())
-	go signCallback(uin, gjson.GetBytes(response, "data.requestCallback").Array(), "sign")
+	go signCallback(uin, gjson.GetBytes(response, "data.requestCallback").Array()) // sign
 	return sign, extra, token, nil
 }
 
@@ -269,7 +268,7 @@ func signRefreshToken(uin string) error {
 	if code.Int() != 0 {
 		return errors.New("code=" + code.String() + ", msg: " + msg.String())
 	}
-	go signCallback(uin, gjson.GetBytes(resp, "data").Array(), "request token")
+	go signCallback(uin, gjson.GetBytes(resp, "data").Array()) // request token
 	return nil
 }
 
@@ -368,36 +367,36 @@ func signVersion() (signServer string, version string, err error) {
 }
 
 // 定时刷新 token, interval 为间隔时间（分钟）
-func signStartRefreshToken(interval int64) {
-	if interval <= 0 {
-		log.Warn("定时刷新 token 已关闭")
-		return
-	}
-	log.Infof("每 %v 分钟将刷新一次签名 token", interval)
-	if interval < 10 {
-		log.Warnf("间隔时间 %v 分钟较短，推荐 30~40 分钟", interval)
-	}
-	if interval > 60 {
-		log.Warn("间隔时间不能超过 60 分钟，已自动设置为 60 分钟")
-		interval = 60
-	}
-	t := time.NewTicker(time.Duration(interval) * time.Minute)
-	qqstr := strconv.FormatInt(base.Account.Uin, 10)
-	defer t.Stop()
-	for range t.C {
-		cs, master := ss.get(), &base.SignServers[0]
-		if (cs == nil || cs.URL != master.URL) && isServerAvaliable(master.URL) {
-			ss.set(master)
-			log.Infof("主签名服务器可用，已切换至主签名服务器 %v", master.URL)
-		}
-		cs = ss.get()
-		if cs == nil {
-			log.Warn("无法获得可用签名服务器，停止 token 定时刷新")
-			return
-		}
-		err := signRefreshToken(qqstr)
-		if err != nil {
-			log.Warnf("刷新 token 出现错误: %v. server: %v", err, cs.URL)
-		}
-	}
-}
+// func signStartRefreshToken(interval int64) {
+// 	if interval <= 0 {
+// 		log.Warn("定时刷新 token 已关闭")
+// 		return
+// 	}
+// 	log.Infof("每 %v 分钟将刷新一次签名 token", interval)
+// 	if interval < 10 {
+// 		log.Warnf("间隔时间 %v 分钟较短，推荐 30~40 分钟", interval)
+// 	}
+// 	if interval > 60 {
+// 		log.Warn("间隔时间不能超过 60 分钟，已自动设置为 60 分钟")
+// 		interval = 60
+// 	}
+// 	t := time.NewTicker(time.Duration(interval) * time.Minute)
+// 	qqstr := strconv.FormatInt(base.Account.Uin, 10)
+// 	defer t.Stop()
+// 	for range t.C {
+// 		cs, master := ss.get(), &base.SignServers[0]
+// 		if (cs == nil || cs.URL != master.URL) && isServerAvaliable(master.URL) {
+// 			ss.set(master)
+// 			log.Infof("主签名服务器可用，已切换至主签名服务器 %v", master.URL)
+// 		}
+// 		cs = ss.get()
+// 		if cs == nil {
+// 			log.Warn("无法获得可用签名服务器，停止 token 定时刷新")
+// 			return
+// 		}
+// 		err := signRefreshToken(qqstr)
+// 		if err != nil {
+// 			log.Warnf("刷新 token 出现错误: %v. server: %v", err, cs.URL)
+// 		}
+//   }
+// }
