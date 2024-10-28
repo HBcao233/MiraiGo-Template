@@ -3,7 +3,7 @@ package ping
 import (
 	"regexp"
 
-	"github.com/Logiase/MiraiGo-Template/bot"
+	"github.com/Logiase/MiraiGo-Template/client"
 	"github.com/Logiase/MiraiGo-Template/global/coolq"
 	Message "github.com/Mrs4s/MiraiGo/message"
 	log "github.com/sirupsen/logrus"
@@ -32,5 +32,5 @@ func ping(bot *coolq.CQBot, event *coolq.Event) {
 }
 
 func init() {
-	bot.AddHandler(ping)
+	client.AddHandler(ping)
 }

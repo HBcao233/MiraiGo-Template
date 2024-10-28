@@ -1,4 +1,4 @@
-package bot
+package client
 
 import (
 	"bufio"
@@ -21,6 +21,7 @@ import (
 
 var console = bufio.NewReader(os.Stdin)
 var ErrSMSRequestError = errors.New("sms request error")
+var bot *coolq.CQBot
 
 func readLine() (str string) {
 	str, _ = console.ReadString('\n')
@@ -106,7 +107,7 @@ func Login() {
 	log.Infof("开始加载群列表...")
 	global.Check(cli.ReloadGroupList(), true)
 	log.Infof("共加载 %v 个群.", len(cli.GroupList))
-	bot := coolq.NewQQBot(cli)
+	bot = coolq.NewQQBot(cli)
 	for _, f := range hooks_connected {
 		go f(bot)
 	}

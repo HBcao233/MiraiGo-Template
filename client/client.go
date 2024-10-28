@@ -1,4 +1,4 @@
-package bot
+package client
 
 import (
 	"fmt"
@@ -139,9 +139,14 @@ func loadVersions() {
 	}
 }
 
-func GetBot() *client.QQClient {
+func GetClient() *client.QQClient {
 	return cli
 }
+
+func GetBot() *coolq.CQBot {
+	return bot
+}
+
 func AddHandler(f func(*coolq.CQBot, *coolq.Event)) {
 	handlers = append(handlers, f)
 }
