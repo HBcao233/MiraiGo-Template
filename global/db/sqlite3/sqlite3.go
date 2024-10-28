@@ -17,7 +17,7 @@ import (
 	"github.com/Mrs4s/MiraiGo/binary"
 	"github.com/Mrs4s/MiraiGo/utils"
 
-	"github.com/Mrs4s/go-cqhttp/db"
+	"github.com/Logiase/MiraiGo-Template/global/db"
 )
 
 type database struct {

@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"gopkg.in/yaml.v3"
 
-	"github.com/Mrs4s/go-cqhttp/db"
+	"github.com/Logiase/MiraiGo-Template/global/db"
 )
 
 type database struct {
@@ -64,7 +64,7 @@ func (m *database) GetMessageByGlobalID(id int32) (db.StoredMessage, error) {
 func (m *database) GetGroupMessageByGlobalID(id int32) (*db.StoredGroupMessage, error) {
 	coll := m.mongo.Collection(MongoGroupMessageCollection)
 	var ret db.StoredGroupMessage
-	if err := coll.FindOne(context.Background(), bson.D{{"globalId", id}}).Decode(&ret); err != nil {
+	if err := coll.FindOne(context.Background(), bson.D{{Key: "globalId", Value: id}}).Decode(&ret); err != nil {
 		return nil, errors.Wrap(err, "query error")
 	}
 	return &ret, nil
@@ -73,7 +73,7 @@ func (m *database) GetGroupMessageByGlobalID(id int32) (*db.StoredGroupMessage, 
 func (m *database) GetPrivateMessageByGlobalID(id int32) (*db.StoredPrivateMessage, error) {
 	coll := m.mongo.Collection(MongoPrivateMessageCollection)
 	var ret db.StoredPrivateMessage
-	if err := coll.FindOne(context.Background(), bson.D{{"globalId", id}}).Decode(&ret); err != nil {
+	if err := coll.FindOne(context.Background(), bson.D{{Key: "globalId", Value: id}}).Decode(&ret); err != nil {
 		return nil, errors.Wrap(err, "query error")
 	}
 	return &ret, nil
@@ -82,7 +82,7 @@ func (m *database) GetPrivateMessageByGlobalID(id int32) (*db.StoredPrivateMessa
 func (m *database) GetGuildChannelMessageByID(id string) (*db.StoredGuildChannelMessage, error) {
 	coll := m.mongo.Collection(MongoGuildChannelMessageCollection)
 	var ret db.StoredGuildChannelMessage
-	if err := coll.FindOne(context.Background(), bson.D{{"_id", id}}).Decode(&ret); err != nil {
+	if err := coll.FindOne(context.Background(), bson.D{{Key: "_id", Value: id}}).Decode(&ret); err != nil {
 		return nil, errors.Wrap(err, "query error")
 	}
 	return &ret, nil
@@ -90,18 +90,18 @@ func (m *database) GetGuildChannelMessageByID(id string) (*db.StoredGuildChannel
 
 func (m *database) InsertGroupMessage(msg *db.StoredGroupMessage) error {
 	coll := m.mongo.Collection(MongoGroupMessageCollection)
-	_, err := coll.UpdateOne(context.Background(), bson.D{{"_id", msg.ID}}, bson.D{{"$set", msg}}, options.Update().SetUpsert(true))
+	_, err := coll.UpdateOne(context.Background(), bson.D{{Key: "_id", Value: msg.ID}}, bson.D{{Key: "$set", Value: msg}}, options.Update().SetUpsert(true))
 	return errors.Wrap(err, "insert error")
 }
 
 func (m *database) InsertPrivateMessage(msg *db.StoredPrivateMessage) error {
 	coll := m.mongo.Collection(MongoPrivateMessageCollection)
-	_, err := coll.UpdateOne(context.Background(), bson.D{{"_id", msg.ID}}, bson.D{{"$set", msg}}, options.Update().SetUpsert(true))
+	_, err := coll.UpdateOne(context.Background(), bson.D{{Key: "_id", Value: msg.ID}}, bson.D{{Key: "$set", Value: msg}}, options.Update().SetUpsert(true))
 	return errors.Wrap(err, "insert error")
 }
 
 func (m *database) InsertGuildChannelMessage(msg *db.StoredGuildChannelMessage) error {
 	coll := m.mongo.Collection(MongoGuildChannelMessageCollection)
-	_, err := coll.UpdateOne(context.Background(), bson.D{{"_id", msg.ID}}, bson.D{{"$set", msg}}, options.Update().SetUpsert(true))
+	_, err := coll.UpdateOne(context.Background(), bson.D{{Key: "_id", Value: msg.ID}}, bson.D{{Key: "$set", Value: msg}}, options.Update().SetUpsert(true))
 	return errors.Wrap(err, "insert error")
 }
